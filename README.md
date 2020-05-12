@@ -10,6 +10,7 @@ to articles in namespace 0 (i.e. no templates/categories/etc.). Resolve any redi
 their corresponding Wikidata IDs. Add in topic labels and convert this feature representation to fastText format.
 * `drafttopic_article_fasttext_model.py`: learn a simple fastText supervised multilabel model for predicting an article's 
 topics based on the bag-of-Wikidata-outlinks representation.
+* `utils/build_qid_topic_dump.py`: build the QID -> topic mapping needed for building labeled fastText data.
 
 ## Resources
 * [topic labels (figshare)](https://figshare.com/articles/Wikipedia_Articles_and_Associated_WikiProject_Templates/10248344)
