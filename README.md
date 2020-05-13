@@ -18,3 +18,4 @@ topics based on the bag-of-Wikidata-outlinks representation.
 * [redirect data (dumps)](https://www.mediawiki.org/wiki/Manual:Redirect_table)
 * [page data (dumps)](https://www.mediawiki.org/wiki/Manual:Page_table)
 * [wikidata ID mapping (hive)](https://wikitech.wikimedia.org/wiki/Analytics/Data_Lake/Edits/Wikidata_item_page_link)
+* See [spark code](https://github.com/wikimedia/research-tutorials/blob/master/access-data_link-graph-via-spark.ipynb) for producing these link graphs. As of May 2020, code does not resolve redirects though.
