@@ -336,24 +336,24 @@ def mixed_training(lang_props):
     """
     langs_fn = '_'.join([l for l in lang_props])
     with open('{0}_train.txt'.format(langs_fn), 'w') as fout_data:
-        with open('{0}_train_metadata'.format(langs_fn), 'w') as fout_metadata:
+        with open('{0}_train_metadata.txt'.format(langs_fn), 'w') as fout_metadata:
             fins = {}
             for l in lang_props:
                 fins['{0}_data'.format(l)] = open('{0}_train.txt'.format(l), 'r')
                 fins['{0}_metadata'.format(l)] = open('{0}_train_metadata.txt'.format(l), 'r')
-                while True:
-                    failed = 0
-                    for l in lang_props:
-                        try:
-                            data = next(fins['{0}_data'.format(l)])
-                            metadata = next(fins['{0}_metadata'.format(l)])
-                            if random.random() < lang_props[l]:
-                                fout_data.write(data)
-                                fout_metadata.write(metadata.replace('\n', '\t{0}\n'.format(l)))
-                        except:
-                            failed += 1
-                        if failed == len(lang_props):
-                            break
+            while True:
+                failed = 0
+                for l in lang_props:
+                    try:
+                        data = next(fins['{0}_data'.format(l)])
+                        metadata = next(fins['{0}_metadata'.format(l)])
+                        if random.random() < lang_props[l]:
+                            fout_data.write(data)
+                            fout_metadata.write(metadata.replace('\n', '\t{0}\n'.format(l)))
+                    except Exception:
+                        failed += 1
+                if failed == len(lang_props):
+                    break
 
 if __name__ == "__main__":
     main()
