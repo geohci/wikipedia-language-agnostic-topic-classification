@@ -3,7 +3,6 @@ import csv
 import bz2
 import gzip
 import os
-import random
 
 # pagelinks table is of the format pageID -> page title
 # there are a two main challenges with this format:
@@ -18,6 +17,8 @@ import random
 # putting all these pieces together, we can then get our desired pageID -> pageID mapping
 # and convert it to QIDs
 # or flip it for inlinks
+
+DUMP_DIR = '/mnt/data/xmldatadumps/public/'
 
 def main():
     parser = argparse.ArgumentParser()
@@ -110,12 +111,6 @@ def main():
         output_qid_links_fn = args.output_outlinks_tsv.replace(".tsv.bz2", "_qids.tsv.bz2")
         pid_to_qid(args.output_outlinks_tsv, args.pid_to_qid_fn, output_qid_links_fn, '{0}wiki'.format(args.lang))
 
-        if args.qid_to_topics_fn and args.fasttext_data_dir:
-            # convert into fastText format + train/val/test splits for modeling
-            print("Splitting/reformatting for fastText.")
-            qid_to_fasttext(output_qid_links_fn, args.qid_to_topics_fn,
-                            os.path.join(args.fasttext_data_dir, '{0}.txt'.format(args.lang)))
-
 def aggregate_outlinks(outlinks_fn):
     """Aggregate one outlink per line to one source page per line."""
     outlinks = {}
@@ -205,7 +200,7 @@ def get_links_all(lang, sqldate, ns=0):
     """For a given wiki, generate all links of form source_pageID -> target_pageTitle where both source and target are in namespace `ns`"""
     prefix = 'INSERT INTO `pagelinks` VALUES '
     postfix = ';\n'
-    dump_fn = '/mnt/data/xmldatadumps/public/{0}wiki/{1}/{0}wiki-{1}-pagelinks.sql.gz'.format(lang, sqldate)
+    dump_fn = os.path.join(DUMP_DIR, '{0}wiki/{1}/{0}wiki-{1}-pagelinks.sql.gz'.format(lang, sqldate))
     checked = 0
     yielded = 0
     blocks = 0
@@ -232,7 +227,7 @@ def get_redirects(lang, sqldate, ns=0):
     prefix = 'INSERT INTO `redirect` VALUES '
     postfix = ';\n'
     redirects = {}
-    dump_fn =  '/mnt/data/xmldatadumps/public/{0}wiki/{1}/{0}wiki-{1}-redirect.sql.gz'.format(lang, sqldate)
+    dump_fn = os.path.join(DUMP_DIR, '{0}wiki/{1}/{0}wiki-{1}-redirect.sql.gz'.format(lang, sqldate))
     title_matches = 0
     skipped_out_of_ns = 0
     with gzip.open(dump_fn, 'rt', errors='replace') as fin:
@@ -256,7 +251,7 @@ def get_pid_to_ptitle(lang, sqldate, ns=0):
     prefix = 'INSERT INTO `page` VALUES '
     postfix = ';\n'
     pid_to_title = {}
-    dump_fn =  '/mnt/data/xmldatadumps/public/{0}wiki/{1}/{0}wiki-{1}-page.sql.gz'.format(lang, sqldate)
+    dump_fn =  os.path.join(DUMP_DIR, '{0}wiki/{1}/{0}wiki-{1}-page.sql.gz'.format(lang, sqldate))
     with gzip.open(dump_fn, 'rt', errors='replace') as fin:
         for i, line in enumerate(fin, start=1):
             if line.startswith('INSERT INTO'):
@@ -269,91 +264,6 @@ def get_pid_to_ptitle(lang, sqldate, ns=0):
                         pid_to_title[pid] = title
     print("{0} page IDs found.".format(len(pid_to_title)))
     return pid_to_title
-
-def fasttextify(topic):
-    """Translate articletopic labels into fastText format (prefixed with __label__ and no spaces)."""
-    return '__label__{0}'.format(topic.replace(' ', '_'))
-
-def qid_to_fasttext(qid_links_fn, qid_topics_fn, base_fasttext_fn):
-    """Reformat for fastText and split into train/val/test."""
-    train_prop = 0.9
-    val_prop = 0.02
-    test_prop = 0.08
-    assert train_prop + val_prop + test_prop == 1
-    train_fn = base_fasttext_fn.replace('.txt', '_train.txt')
-    train_metadata_fn = base_fasttext_fn.replace('.txt', '_train_metadata.txt')
-    val_fn = base_fasttext_fn.replace('.txt', '_val.txt')
-    val_metadata_fn = base_fasttext_fn.replace('.txt', '_val_metadata.txt')
-    test_fn = base_fasttext_fn.replace('.txt', '_test.txt')
-    test_metadata_fn = base_fasttext_fn.replace('.txt', '_test_metadata.txt')
-    qid_topics = {}
-    with bz2.open(qid_topics_fn, 'rt') as fin:
-        csvreader = csv.reader(fin)
-        assert next(csvreader) == ['qid', 'topics']
-        for line in csvreader:
-            qid = line[0]
-            topics = eval(line[1])
-            qid_topics[qid] = topics
-    print("{0} QIDs with topics.".format(len(qid_topics)))
-    train_written = 0
-    val_written = 0
-    test_written = 0
-    i = 0
-    with bz2.open(qid_links_fn, 'rt') as fin:
-        tsvreader = csv.reader(fin, delimiter='\t')
-        with open(train_fn, 'w') as train_fout:
-            with open(train_metadata_fn, 'w') as train_metadata_fout:
-                with open(val_fn, 'w') as val_fout:
-                    with open(val_metadata_fn, 'w') as val_metadata_fout:
-                        with open(test_fn, 'w') as test_fout:
-                            with open(test_metadata_fn, 'w') as test_metadata_fout:
-                                for i, line in enumerate(tsvreader, start=1):
-                                    src_qid = line[0]
-                                    if src_qid in qid_topics:
-                                        topics = qid_topics[src_qid]
-                                        outlinks = eval(line[1])
-                                        r = random.random()
-                                        if r <= train_prop:
-                                            data_fout = train_fout
-                                            metadata_fout = train_metadata_fout
-                                            train_written += 1
-                                        elif r <= train_prop + val_prop:
-                                            data_fout = val_fout
-                                            metadata_fout = val_metadata_fout
-                                            val_written += 1
-                                        else:
-                                            data_fout = test_fout
-                                            metadata_fout = test_metadata_fout
-                                            test_written += 1
-                                        data_fout.write('{0} {1}\n'.format(' '.join([fasttextify(t) for t in topics]), ' '.join(outlinks)))
-                                        metadata_fout.write('{0}\n'.format(src_qid))
-    print("{0} total: {1} train. {2} val. {3} test.".format(i, train_written, val_written, test_written))
-
-def mixed_training(lang_props):
-    """Utility to make mixed fastText training files for training mixed language models.
-    lang_props of format {'en':0.5, 'es':0.5}, which will include 1/2 the English data and 1/2 the Spanish data
-    and not make a file that is 50-50 english-spanish (that would probably require something like {'en':0.05, 'es':0.5}
-    """
-    langs_fn = '_'.join([l for l in lang_props])
-    with open('{0}_train.txt'.format(langs_fn), 'w') as fout_data:
-        with open('{0}_train_metadata.txt'.format(langs_fn), 'w') as fout_metadata:
-            fins = {}
-            for l in lang_props:
-                fins['{0}_data'.format(l)] = open('{0}_train.txt'.format(l), 'r')
-                fins['{0}_metadata'.format(l)] = open('{0}_train_metadata.txt'.format(l), 'r')
-            while True:
-                failed = 0
-                for l in lang_props:
-                    try:
-                        data = next(fins['{0}_data'.format(l)])
-                        metadata = next(fins['{0}_metadata'.format(l)])
-                        if random.random() < lang_props[l]:
-                            fout_data.write(data)
-                            fout_metadata.write(metadata.replace('\n', '\t{0}\n'.format(l)))
-                    except Exception:
-                        failed += 1
-                if failed == len(lang_props):
-                    break
 
 if __name__ == "__main__":
     main()

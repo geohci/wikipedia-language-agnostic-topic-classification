@@ -1,8 +1,10 @@
+# Train fastText model
 import argparse
 import csv
 import multiprocessing
 import os
 import sys
+import time
 
 csv.field_size_limit(sys.maxsize)
 
@@ -42,12 +44,12 @@ def grid_search(train_fn, val_fn, learning_rates, minCounts, epochs, ws, wvs, nd
             for lbl in lbls:
                 label_counts_train[lbl] = label_counts_train.get(lbl, 0) + 1
     grid_search_results = []
+    wv = wvs
     for lr in learning_rates:
             for minCount in minCounts:
                 for epoch in epochs:
                     for w in ws:
-                        for i in range(0, len(wvs)):
-                            wv = wvs[i]
+                        for i in range(0, len(ndims)):
                             ndim = ndims[i]
                             print("Building fasttext model: {0} lr; {1} dim; {2} min count; {3} epochs. {4} ws. wv: {5}.".format(
                                 lr, ndim, minCount, epoch, w, wv))
@@ -111,17 +113,17 @@ def main():
                         default="/home/isaacj/fastText/drafttopic/wikitext/enwiki.balanced_article_sample.w_article_text_6303_test_data.txt")
     parser.add_argument("--false_negatives_fn")
     parser.add_argument("--output_model")
-    parser.add_argument("--word_vectors", nargs="+",
-                        default=['/home/isaacj/fastText/drafttopic/wvs/enwiki.vectors.20191201.skipgram_50.300k.vec'],
-                        type=str)
+    parser.add_argument("--word_vectors", default='')
     parser.add_argument("--learning_rates", nargs="+", default=[0.1], type=float)
     parser.add_argument("--minCounts", nargs="+", default=[3], type=int)
     parser.add_argument("--epochs", nargs="+", default=[25], type=int)
     parser.add_argument("--ws", nargs="+", default=[20], type=int)
     parser.add_argument("--ndims", nargs="+", default=[50], type=int)
+    parser.add_argument("--mlc_res_tsv")
     args = parser.parse_args()
 
     if os.path.exists(args.output_model):
+        print("Loading model:", args.output_model)
         model = fasttext.load_model(args.output_model)
     else:
         if args.val_data and len(args.learning_rates + args.minCounts + args.epochs + args.ws + args.ndims) > 5:
@@ -132,11 +134,12 @@ def main():
             minCount = args.minCounts[0]
             epochs = args.epochs[0]
             ws = args.ws[0]
-            wv = args.word_vectors[0]
+            wv = args.word_vectors
             ndim = args.ndims[0]
-
+    
         print("Building fasttext model: {0} lr; {1} min count; {2} epochs; {3} ws; wv: {4}".format(
             lr, minCount, epochs, ws, wv))
+        start = time.time()
         model = fasttext.train_supervised(input=args.training_data,
                                           minCount=minCount,
                                           wordNgrams=WORDNGRAMS,
@@ -150,6 +153,7 @@ def main():
                                           thread=MAXTHREADS,
                                           loss=LOSS,
                                           verbose=VERBOSITY)
+        print("{0} seconds elapsed in training.".format(time.time() - start))
 
         if args.output_model:
             print("Dumping fasttext model to {0}".format(args.output_model))
@@ -243,6 +247,8 @@ def main():
         mlc_statistics = mlc_statistics[['n', '', 'TP', 'FP', 'TN', 'FN', 'precision', 'recall', 'f1', 'pr-auc', 'avg_pre']]
         with pd.option_context('display.max_rows', None):
             print(mlc_statistics)
+        if args.mlc_res_tsv:
+            mlc_statistics.to_csv(args.mlc_res_tsv, sep='|')
 
         print("Dropping {0} because of Null values.".format(mlc_statistics[mlc_statistics.isnull().T.any()].index))
         mlc_statistics = mlc_statistics.dropna()
@@ -262,7 +268,6 @@ def main():
         print("\nPrecision: {0:.3f} micro; {1:.3f} macro".format(np.average(tlc_statistics['precision'], weights=tlc_statistics['n']), np.mean(tlc_statistics['precision'])))
         print("Recall: {0:.3f} micro; {1:.3f} macro".format(np.average(tlc_statistics['recall'], weights=tlc_statistics['n']), np.mean(tlc_statistics['recall'])))
         print("F1: {0:.3f} micro; {1:.3f} macro".format(np.average(tlc_statistics['f1'], weights=tlc_statistics['n']), np.mean(tlc_statistics['f1'])))
-
 
         if args.false_negatives_fn:
             num_examples_per_label = 10
